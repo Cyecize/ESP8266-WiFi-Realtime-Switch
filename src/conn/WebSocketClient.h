@@ -26,6 +26,8 @@ public:
 
     void forceConnect();
 
+    void sendMessage(String &msg);
+
 private:
     bool connect();
 

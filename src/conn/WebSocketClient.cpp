@@ -1,5 +1,11 @@
 #include "WebSocketClient.h"
 
+#define WS_FIN            0x80
+#define WS_OPCODE_TEXT    0x01
+
+#define WS_MASK           0x80
+#define WS_SIZE16         126
+
 const int MAX_RETRY_CONN_ATTEMPTS = 5;
 const int RETRY_CONN_INTERVAL_MS = 2000;
 const long MAX_MESSAGE_SIZE_BYTES = 512;
@@ -215,4 +221,41 @@ WiFiClient *WebSocketClient::getClient(bool isSecure) {
     }
 
     return new WiFiClient();
+}
+
+void WebSocketClient::sendMessage(String &msg) {
+    if (!client->connected()) {
+        Serial.println("Could not send msg " + msg + " because client is not connected!");
+        return;
+    }
+
+    // 1. send fin and type text
+    this->client->write(WS_FIN | WS_OPCODE_TEXT);
+
+    // 2. send length
+    int size = msg.length();
+    if (size > 125) {
+        this->client->write(WS_MASK | WS_SIZE16);
+        this->client->write((uint8_t) (size >> 8));
+        this->client->write((uint8_t) (size & 0xFF));
+    } else {
+        this->client->write(WS_MASK | (uint8_t) size);
+    }
+
+    // 3. send mask
+    uint8_t mask[4];
+    mask[0] = random(0, 256);
+    mask[1] = random(0, 256);
+    mask[2] = random(0, 256);
+    mask[3] = random(0, 256);
+
+    this->client->write(mask[0]);
+    this->client->write(mask[1]);
+    this->client->write(mask[2]);
+    this->client->write(mask[3]);
+
+    //4. send masked data
+    for (int i = 0; i < size; ++i) {
+        this->client->write(msg[i] ^ mask[i % 4]);
+    }
 }
