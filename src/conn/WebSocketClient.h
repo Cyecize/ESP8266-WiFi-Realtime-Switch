@@ -3,7 +3,7 @@
 
 #include <ESP8266WiFi.h>
 
-typedef void (*CallbackFunction)(String str);
+typedef void (*CallbackFunction)(String str, String &offset);
 
 class WebSocketClient {
 private:
@@ -12,6 +12,7 @@ private:
     int port;
     String url;
     CallbackFunction callback;
+    bool autoAck;
 
 public:
     ~WebSocketClient();
@@ -20,13 +21,20 @@ public:
               String &srv,
               int srvPort,
               String &socketUrl,
+              bool autoAcknowledge,
               const CallbackFunction &callbackFunc);
 
     bool tick();
 
     void forceConnect();
 
+    void forceReconnect();
+
     void sendMessage(String &msg);
+
+    void sendMessageAndAcknowledge(String &msg, String &offset);
+
+    void acknowledge(String &offset);
 
 private:
     bool connect();

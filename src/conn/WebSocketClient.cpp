@@ -1,5 +1,6 @@
 #include "WebSocketClient.h"
 
+
 #define WS_FIN            0x80
 #define WS_OPCODE_TEXT    0x01
 
@@ -22,12 +23,14 @@ void WebSocketClient::init(bool isSecure,
                            String &srv,
                            int srvPort,
                            String &socketUrl,
+                           bool autoAcknowledge,
                            const CallbackFunction &callbackFunc) {
     this->client = this->getClient(isSecure);
     this->server = srv;
     this->port = srvPort;
     this->url = socketUrl;
     this->callback = callbackFunc;
+    this->autoAck = autoAcknowledge;
 
     this->forceConnect();
 }
@@ -61,12 +64,17 @@ void WebSocketClient::forceConnect() {
     }
 }
 
+void WebSocketClient::forceReconnect() {
+    this->client->stop(1);
+    this->forceConnect();
+}
+
 bool WebSocketClient::connect() {
     if (!client->connect(server, this->port)) {
         return false;
     }
 
-    client->keepAlive(KEEP_ALIVE_IDLE_SEC, KEEP_ALIVE_INTRV_SEC, KEEP_ALIVE_MAX_FAIL_COUNT);
+    // client->keepAlive(KEEP_ALIVE_IDLE_SEC, KEEP_ALIVE_INTRV_SEC, KEEP_ALIVE_MAX_FAIL_COUNT);
 
     // Line 1
     client->print("GET ");
@@ -76,7 +84,7 @@ bool WebSocketClient::connect() {
     // Host header
     client->print("Host: ");
     client->print(this->server);
-    if (this->port != 80) {
+    if (this->port != 80 && this->port != 443) {
         client->print(":" + String(this->port));
     }
     client->println();
@@ -86,7 +94,14 @@ bool WebSocketClient::connect() {
 
     // Websocket Key header
     client->print("Sec-WebSocket-Key: ");
-    client->println(generateWebSocketKey());
+    client->println("4KiZwqw3OeyTS2D1lv8nJQ==");
+
+    // TODO: Add logic for registering device here
+    client->print("Device-Id: ");
+    client->println("cf4d185b-ae8b-4b75-8b8b-4de5ac74e396");
+
+    client->print("Device-Secret: ");
+    client->println("1aa5107c-546c-411d-a4d9-c80a66738dd6");
 
     client->println("Sec-WebSocket-Version: 13");
     client->println();
@@ -209,7 +224,26 @@ void WebSocketClient::readWebSocketData() {
         }
     }
 
-    this->callback(String(MSG_RESP_BUFFER));
+    String msg = String(MSG_RESP_BUFFER);
+
+    if (msg.startsWith("^|")) {
+        int firstIndex = msg.indexOf('|');
+        int lastIndex = msg.lastIndexOf('|');
+
+        String offset = msg.substring(firstIndex + 1, lastIndex);
+
+        msg = msg.substring(lastIndex + 2);
+
+        this->callback(msg, offset);
+        if (this->autoAck) {
+            this->acknowledge(offset);
+        }
+    } else if (msg.equals("|pong|")) {
+//        Serial.println("ponging!");
+    } else {
+        String offset = "";
+        this->callback(String(MSG_RESP_BUFFER), offset);
+    }
 
     // Reset the buffer.
     memset(MSG_RESP_BUFFER, 0, MAX_MESSAGE_SIZE_BYTES);
@@ -217,7 +251,9 @@ void WebSocketClient::readWebSocketData() {
 
 WiFiClient *WebSocketClient::getClient(bool isSecure) {
     if (isSecure) {
-        return new WiFiClientSecure();
+        auto client = new WiFiClientSecure();
+        client->setInsecure();
+        return client;
     }
 
     return new WiFiClient();
@@ -258,4 +294,16 @@ void WebSocketClient::sendMessage(String &msg) {
     for (int i = 0; i < size; ++i) {
         this->client->write(msg[i] ^ mask[i % 4]);
     }
+}
+
+void WebSocketClient::sendMessageAndAcknowledge(String &msg, String &offset) {
+    String ackString = "ack=|" + offset + "|" + msg;
+    Serial.println("Sending ack: " + ackString);
+    this->sendMessage(ackString);
+}
+
+void WebSocketClient::acknowledge(String &offset) {
+    String ackString = "ack=|" + offset + "|";
+    Serial.println("Sending ack: " + ackString);
+    this->sendMessage(ackString);
 }
