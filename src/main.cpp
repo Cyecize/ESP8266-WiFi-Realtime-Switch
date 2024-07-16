@@ -6,6 +6,7 @@
 TaskScheduler heartbeatScheduler;
 WebSocketClient socketClient;
 WiFiManager wiFiManager;
+bool resetConn = false;
 
 void waitForWifi() {
     // waiting for connection to Wi-Fi network
@@ -27,10 +28,19 @@ void waitForWifi() {
 }
 
 void setup() {
+    //TODO: receive the pin info remotely
+    pinMode(2, OUTPUT);
     Serial.begin(115200);
     wiFiManager.autoConnect("WaterTankPot", "12345677");
 
     heartbeatScheduler.init(4000, true, []() {
+        resetConn = !socketClient.isHeartBeatReceived();
+        socketClient.resetHeartBeat();
+        if (resetConn) {
+            Serial.println("Heartbeat message was not received in time, resetting the connection!");
+            return;
+        }
+
         String ping = "|ping|";
         socketClient.sendMessage(ping);
     });
@@ -49,18 +59,33 @@ void setup() {
             sockUrl,
             false,
             [](String str, String &offset) {
-                Serial.println("Got: " + str);
+                Serial.println("Received : " + str);
+                if (str.equals("on")) {
+                    digitalWrite(2, HIGH);
+                } else {
+                    digitalWrite(2, LOW);
+                }
 
-                String res = "We just got " + str;
-
-                socketClient.sendMessageAndAcknowledge(str, offset);
+                socketClient.acknowledge(offset);
             }
     );
 }
 
 void loop() {
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("Something happen with Wi-Fi!");
+        waitForWifi();
+    }
+
     heartbeatScheduler.tick();
+    if (resetConn) {
+        resetConn = false;
+        waitForWifi();
+        socketClient.forceReconnect();
+    }
+
     if (!socketClient.tick()) {
+        waitForWifi();
         socketClient.forceConnect();
     }
 }

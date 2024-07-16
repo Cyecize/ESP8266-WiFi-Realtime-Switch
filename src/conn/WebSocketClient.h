@@ -13,6 +13,7 @@ private:
     String url;
     CallbackFunction callback;
     bool autoAck;
+    bool heartBeatReceived;
 
 public:
     ~WebSocketClient();
@@ -35,6 +36,10 @@ public:
     void sendMessageAndAcknowledge(String &msg, String &offset);
 
     void acknowledge(String &offset);
+
+    void resetHeartBeat();
+
+    bool isHeartBeatReceived();
 
 private:
     bool connect();

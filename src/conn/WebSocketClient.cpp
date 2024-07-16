@@ -31,6 +31,7 @@ void WebSocketClient::init(bool isSecure,
     this->url = socketUrl;
     this->callback = callbackFunc;
     this->autoAck = autoAcknowledge;
+    this->heartBeatReceived = true;
 
     this->forceConnect();
 }
@@ -108,7 +109,7 @@ bool WebSocketClient::connect() {
     client->flush();
 
     readHTTPResponseHeaders();
-
+    this->heartBeatReceived = true;
     return true;
 }
 
@@ -239,7 +240,7 @@ void WebSocketClient::readWebSocketData() {
             this->acknowledge(offset);
         }
     } else if (msg.equals("|pong|")) {
-//        Serial.println("ponging!");
+        this->heartBeatReceived = true;
     } else {
         String offset = "";
         this->callback(String(MSG_RESP_BUFFER), offset);
@@ -306,4 +307,12 @@ void WebSocketClient::acknowledge(String &offset) {
     String ackString = "ack=|" + offset + "|";
     Serial.println("Sending ack: " + ackString);
     this->sendMessage(ackString);
+}
+
+void WebSocketClient::resetHeartBeat() {
+    this->heartBeatReceived = false;
+}
+
+bool WebSocketClient::isHeartBeatReceived() {
+    return !this->client->connected() || this->heartBeatReceived;
 }
