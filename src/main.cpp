@@ -1,9 +1,12 @@
 #include <Arduino.h>
 #include <WiFiManager.h>
+#include <sys/signal.h>
+
 #include "./util/TaskScheduler.h"
 #include "./conn/WebSocketClient.h"
 
 TaskScheduler heartbeatScheduler;
+TaskScheduler killSwitchScheduler;
 WebSocketClient socketClient;
 WiFiManager wiFiManager;
 bool resetConn = false;
@@ -29,7 +32,7 @@ void waitForWifi() {
 
 void setup() {
     //TODO: receive the pin info remotely
-    pinMode(2, OUTPUT);
+    pinMode(0, OUTPUT);
     Serial.begin(115200);
     wiFiManager.autoConnect("WaterTankPot", "12345677");
 
@@ -61,9 +64,16 @@ void setup() {
             [](String str, String &offset) {
                 Serial.println("Received : " + str);
                 if (str.equals("on")) {
-                    digitalWrite(2, HIGH);
+                    digitalWrite(0, HIGH);
+
+                    killSwitchScheduler.init(300000, false, []() {
+                        digitalWrite(0, LOW);
+                        Serial.println("Kill Switch activated!");
+                    });
+
                 } else {
-                    digitalWrite(2, LOW);
+                    digitalWrite(0, LOW);
+                    killSwitchScheduler.stop();
                 }
 
                 socketClient.acknowledge(offset);
@@ -72,6 +82,8 @@ void setup() {
 }
 
 void loop() {
+    killSwitchScheduler.tick();
+
     if (WiFi.status() != WL_CONNECTED) {
         Serial.println("Something happen with Wi-Fi!");
         waitForWifi();

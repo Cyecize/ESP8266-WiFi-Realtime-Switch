@@ -5,6 +5,7 @@ void TaskScheduler::init(long intervalMillis, bool isLoop, const ScheduleCallbac
     this->callback = callbackFunc;
     this->running = true;
     this->loop = isLoop;
+    this->reset();
 }
 
 void TaskScheduler::reset() {
