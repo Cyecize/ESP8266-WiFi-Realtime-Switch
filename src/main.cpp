@@ -1,19 +1,18 @@
 #include <Arduino.h>
-#include <WiFiManager.h>
-#include <sys/signal.h>
+// #include <WiFiManager.h>
 
 #include "./util/TaskScheduler.h"
 #include "./conn/WebSocketClient.h"
+#include "util/Logger.h"
 
 TaskScheduler heartbeatScheduler;
 TaskScheduler killSwitchScheduler;
 WebSocketClient socketClient;
-WiFiManager wiFiManager;
+// WiFiManager wiFiManager;
 bool resetConn = false;
 
 void waitForWifi() {
-    // waiting for connection to Wi-Fi network
-    Serial.println("Waiting for connection to Wi-Fi");
+    Logger::log("Waiting for connection to Wi-Fi");
     int c = 0;
     while (WiFi.status() != WL_CONNECTED) {
         delay(1000);
@@ -27,20 +26,27 @@ void waitForWifi() {
     }
 
     Serial.println();
-    Serial.println("Connected to WiFi network.");
+    Logger::log("Connected to WiFi network.");
 }
 
 void setup() {
+
+    if (!LittleFS.begin()) {
+        Serial.println("LittleFS Mount Failed");
+        return;
+    }
+
     //TODO: receive the pin info remotely
     pinMode(0, OUTPUT);
     Serial.begin(115200);
-    wiFiManager.autoConnect("WaterTankPot", "12345677");
+    // wiFiManager.autoConnect("WaterTankPot", "12345677");
+    WiFi.begin("AC6", "BigAssBird1");
 
     heartbeatScheduler.init(4000, true, []() {
         resetConn = !socketClient.isHeartBeatReceived();
         socketClient.resetHeartBeat();
         if (resetConn) {
-            Serial.println("Heartbeat message was not received in time, resetting the connection!");
+            Logger::log("Heartbeat message was not received in time, resetting the connection!");
             return;
         }
 
@@ -48,10 +54,15 @@ void setup() {
         socketClient.sendMessage(ping);
     });
 
-    String server = "connector.cyeserv.fun";
+    String server = "connector.cyecize.fun";
     String sockUrl = "/public/v1/device/connect";
-    constexpr int port = 443;
-    constexpr bool isSecure = true;
+    constexpr int port = 80;
+    constexpr bool isSecure = false;
+
+    // String server = "cyecize.com";
+    // String sockUrl = "/public/v1/device/connect";
+    // constexpr int port = 8010;
+    // constexpr bool isSecure = false;
 
     waitForWifi();
 
@@ -65,39 +76,63 @@ void setup() {
                 Serial.println("Received : " + str);
                 if (str.equals("on")) {
                     digitalWrite(0, HIGH);
+                    socketClient.sendMessage("Turning on");
 
                     killSwitchScheduler.init(300000, false, []() {
                         digitalWrite(0, LOW);
                         Serial.println("Kill Switch activated!");
+                        socketClient.sendMessage("Kill Switch turning off");
                     });
 
                 } else {
                     digitalWrite(0, LOW);
                     killSwitchScheduler.stop();
+                    socketClient.sendMessage("Turning off");
+                }
+
+                if (str.equals("force")) {
+                    Logger::log("Forcing conn!");
+                    socketClient.forceConnect();
+                    Logger::log("Forced a conn!");
                 }
 
                 socketClient.acknowledge(offset);
             }
     );
+
+    if (socketClient.tick())
+    {
+        Logger::readAndSendLogs(socketClient);
+    }
 }
 
 void loop() {
     killSwitchScheduler.tick();
 
     if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("Something happen with Wi-Fi!");
+        Logger::log("loop -> Something happened with Wi-Fi!");
         waitForWifi();
     }
 
     heartbeatScheduler.tick();
     if (resetConn) {
         resetConn = false;
+        Logger::log("loop -> Resetting connection!");
         waitForWifi();
-        socketClient.forceReconnect();
+        if (socketClient.forceReconnect())
+        {
+            Logger::readAndSendLogs(socketClient);
+        }
     }
 
     if (!socketClient.tick()) {
+        Logger::log("loop -> Connection to server dropped!");
         waitForWifi();
-        socketClient.forceConnect();
+
+        Logger::log("loop -> Retrying server connection!");
+        if (socketClient.forceReconnect())
+        {
+            Logger::readAndSendLogs(socketClient);
+        }
     }
 }

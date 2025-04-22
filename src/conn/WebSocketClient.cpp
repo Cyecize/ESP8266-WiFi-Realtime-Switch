@@ -1,4 +1,5 @@
 #include "WebSocketClient.h"
+#include <util/Logger.h>
 
 
 #define WS_FIN            0x80
@@ -50,30 +51,50 @@ bool WebSocketClient::tick() {
     return true;
 }
 
-void WebSocketClient::forceConnect() {
+bool WebSocketClient::forceConnect() {
     int count = 1;
-    Serial.println("Connecting to server socket!");
+    Logger::log("WebSocketClient::forceConnect -> Connecting to server socket!");
     while (!this->connect() && count <= MAX_RETRY_CONN_ATTEMPTS) {
         count++;
-        Serial.println("Retrying server socket connection!");
+        Logger::log(
+            "WebSocketClient::forceConnect -> Retrying server socket connection after " + String(RETRY_CONN_INTERVAL_MS)
+            + " ms!");
         delay(RETRY_CONN_INTERVAL_MS);
     }
 
     if (count > MAX_RETRY_CONN_ATTEMPTS) {
-        Serial.println(
-                "Could not connect to server socket after " + String(MAX_RETRY_CONN_ATTEMPTS) + " attempts.");
+        Logger::log(
+            "WebSocketClient::forceConnect -> Could not connect to server socket after " + String(
+                MAX_RETRY_CONN_ATTEMPTS) + " attempts.");
+        return false;
     }
+
+    return true;
 }
 
-void WebSocketClient::forceReconnect() {
+bool WebSocketClient::forceReconnect() {
+    Logger::log("WebSocketClient::forceReconnect -> Stopping client");
     this->client->stop(1);
-    this->forceConnect();
+    return this->forceConnect();
 }
 
 bool WebSocketClient::connect() {
+    timeoutTicker.once_ms(5000, [this]() {
+        Logger::log("WebSocketClient::connect -> ESP Is stuck on conn, stopping!");
+        client->stop(1);
+
+        Logger::log("WebSocketClient::connect -> ESP Is stuck on conn, aborting!");
+        client->abort();
+    });
+
     if (!client->connect(server, this->port)) {
+        Logger::log("WebSocketClient::connect -> Connection to " + this->server + " failed!");
         return false;
     }
+
+    Logger::log("WebSocketClient::connect -> Connection to " + this->server + " succeeded!");
+
+    timeoutTicker.detach();
 
     // client->keepAlive(KEEP_ALIVE_IDLE_SEC, KEEP_ALIVE_INTRV_SEC, KEEP_ALIVE_MAX_FAIL_COUNT);
 
@@ -97,12 +118,25 @@ bool WebSocketClient::connect() {
     client->print("Sec-WebSocket-Key: ");
     client->println("4KiZwqw3OeyTS2D1lv8nJQ==");
 
-    // TODO: Add logic for registering device here
+    // // TODO: Add logic for registering device here
+    // client->print("Device-Id: ");
+    // client->println("cf4d185b-ae8b-4b75-8b8b-4de5ac74e396");
+    //
+    // client->print("Device-Secret: ");
+    // client->println("1aa5107c-546c-411d-a4d9-c80a66738dd6");
+
+    // Gordan (balcony system)
+    // client->print("Device-Id: ");
+    // client->println("f88c08bc-f3aa-4cc3-8bea-fcb6279ef794");
+    // client->print("Device-Secret: ");
+    // client->println("0f01f84d-7270-4561-978d-2a6a925e91ea");
+
+    // // Pot
     client->print("Device-Id: ");
-    client->println("cf4d185b-ae8b-4b75-8b8b-4de5ac74e396");
+    client->println("63b331d7-8148-45f7-bb3c-c6a3f2102540");
 
     client->print("Device-Secret: ");
-    client->println("1aa5107c-546c-411d-a4d9-c80a66738dd6");
+    client->println("f7c5f53c-674b-4766-a98b-ba99cc79c716");
 
     client->println("Sec-WebSocket-Version: 13");
     client->println();
@@ -260,7 +294,7 @@ WiFiClient *WebSocketClient::getClient(bool isSecure) {
     return new WiFiClient();
 }
 
-void WebSocketClient::sendMessage(String &msg) {
+void WebSocketClient::sendMessage(const String &msg) {
     if (!client->connected()) {
         Serial.println("Could not send msg " + msg + " because client is not connected!");
         return;

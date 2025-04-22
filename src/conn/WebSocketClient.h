@@ -1,7 +1,10 @@
 #ifndef ARDUINO_WIFI_REALTIME_SWITCH_WEBSOCKETCLIENT_H
 #define ARDUINO_WIFI_REALTIME_SWITCH_WEBSOCKETCLIENT_H
 
-#include <ESP8266WiFi.h>
+
+#include <Ticker.h>
+#include "../src/ESP8266WiFi/src/ESP8266WiFi.h"
+
 
 typedef void (*CallbackFunction)(String str, String &offset);
 
@@ -14,6 +17,7 @@ private:
     CallbackFunction callback;
     bool autoAck;
     bool heartBeatReceived;
+    Ticker timeoutTicker;
 
 public:
     ~WebSocketClient();
@@ -27,11 +31,11 @@ public:
 
     bool tick();
 
-    void forceConnect();
+    bool forceConnect();
 
-    void forceReconnect();
+    bool forceReconnect();
 
-    void sendMessage(String &msg);
+    void sendMessage(const String &msg);
 
     void sendMessageAndAcknowledge(String &msg, String &offset);
 
