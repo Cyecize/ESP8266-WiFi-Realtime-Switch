@@ -1,10 +1,8 @@
 #ifndef ARDUINO_WIFI_REALTIME_SWITCH_WEBSOCKETCLIENT_H
 #define ARDUINO_WIFI_REALTIME_SWITCH_WEBSOCKETCLIENT_H
 
-
 #include <Ticker.h>
-#include "../src/ESP8266WiFi/src/ESP8266WiFi.h"
-
+#include <ESP8266WiFi.h>
 
 typedef void (*CallbackFunction)(String str, String &offset);
 
@@ -22,7 +20,7 @@ private:
 public:
     ~WebSocketClient();
 
-    void init(bool isSecure,
+    bool init(bool isSecure,
               String &srv,
               int srvPort,
               String &socketUrl,
@@ -35,7 +33,7 @@ public:
 
     bool forceReconnect();
 
-    void sendMessage(const String &msg);
+    bool sendMessage(const String &msg);
 
     void sendMessageAndAcknowledge(String &msg, String &offset);
 
@@ -45,14 +43,24 @@ public:
 
     bool isHeartBeatReceived();
 
+    void disconnect();
+
 private:
+    volatile bool timeoutTriggered = false;
+    volatile bool sendHeartbeat = false;
+    volatile bool closeConn = false;
+
     bool connect();
 
     static String generateWebSocketKey();
 
-    void readHTTPResponseHeaders();
+    bool readHTTPResponseHeaders();
 
     void readWebSocketData();
+
+    void scheduleHeartbeat();
+
+    void setHeartBeatReceived(bool hbr);
 
     static WiFiClient *getClient(bool isSecure);
 };
